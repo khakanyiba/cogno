@@ -27,12 +27,13 @@ class VisionClient:
         if not images:
             return ""
 
+        # Use OpenAI-compatible payload: text + image_url parts
         contents: List[Dict[str, Any]] = [{"type": "text", "text": prompt}]
         for img in images:
             b64 = base64.b64encode(img).decode("utf-8")
             contents.append({
-                "type": "input_image",
-                "image_url": {"url": f"data:image/png;base64,{b64}"}
+                "type": "image_url",
+                "image_url": {"url": f"data:image/png;base64,{b64}"},
             })
 
         resp = await self.client.chat.completions.create(
