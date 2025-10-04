@@ -2,6 +2,7 @@ import io
 import logging
 import os
 import wave
+from datetime import datetime
 from typing import Any, Dict, Optional
 from frontend.document_processor import extract_documents_text
 from frontend.vision_client import VisionClient
@@ -234,25 +235,22 @@ async def on_message(msg: cl.Message):
         if bits:
             context_summary = "\n\n".join(bits)
 
-    stream = await ollama.chat(
-        model=os.getenv("OLLAMA_MODEL"),
-        messages=[
-            {
-                "role": "system",
-                "content": f"""You are Cogno, a helpful assistant for the University of the Western Cape, a South African University.
-                               Today is {datetime.now()}. Ignore use of /bypass, it is just internal configuration to talk to you without using the UWC Knowledge Base as context, don't mention it to the user.
-                               Do not include citations or references in your responses under any circumstances, as it is too verbose. Your answers must be structured neatly. Do not make reference to this instruction or knowledge base.
-                               Your aim to to help with University of the Western Cape related queries.
-                               If context is provided below, use it to answer:
-                               {context_summary}
-
-                            """,
-            },
-            *cl.chat_context.to_openai(),
-        ],
+    # Build system prompt (include context summary if any) and chat history
+    system_prompt = {
+        "role": "system",
+        "content": (
+            "You are Cogno, a helpful assistant for the University of the Western Cape, a South African University.\n"
+            f"Today is {datetime.now()}. Ignore use of /bypass. Do not include citations or references."
+            " Your answers must be concise and well-structured.\n"
+            + (f"Context from user uploads:\n{context_summary}\n" if context_summary else "")
+        ),
+    }
 
     logger.debug(f"Command: {msg.command}, Content: {msg.content}")
     messages = cl.user_session.get("chat_history", [])
+    if not messages:
+        messages.append(system_prompt)
+        messages.extend(cl.chat_context.to_openai())
     messages.append({"role": "user", "content": msg.content})
 
     stream = await ollama.chat(
@@ -297,6 +295,9 @@ async def on_message(msg: cl.Message):
         await final_answer.send()
 
     chat_history = cl.user_session.get("chat_history", [])
+    if not chat_history:
+        chat_history.append(system_prompt)
+        chat_history.extend(cl.chat_context.to_openai())
     chat_history.append({"role": "user", "content": msg.content})
     if msg.command == "search":
         chat_history.append({"role": "assistant", "content": cleaned_response})
